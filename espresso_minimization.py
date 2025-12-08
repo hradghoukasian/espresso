@@ -1,6 +1,7 @@
 import math
 import time
 from typing import Iterable, List, Dict
+import random
 
 from pyeda.inter import exprvars, truthtable
 from pyeda.boolalg.minimization import espresso_tts
@@ -159,3 +160,12 @@ def minimize_truth_table_espresso(tt: str, verbose: bool = True):
         print("\nStatistics:", stats, "\n")
 
     return f_min, stats
+
+def generate_random_tt(n_vars: int) -> str:
+    """
+    Generate a random truth table string of length 2^n_vars.
+    Characters are randomly chosen from {0, 1, -}.
+    '-' represents a don't-care.
+    """
+    size = 2 ** n_vars
+    return "".join(random.choice("01-") for _ in range(size))
