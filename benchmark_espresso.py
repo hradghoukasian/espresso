@@ -21,5 +21,5 @@ def benchmark(ns, runs=10):
     print("\n---------------------------------------------\n")
 
 if __name__ == "__main__":
-    sizes = [20]
-    benchmark(sizes, runs=1)
+    sizes = [17]
+    benchmark(sizes, runs=10)

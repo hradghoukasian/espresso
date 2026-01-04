@@ -168,4 +168,4 @@ def generate_random_tt(n_vars: int) -> str:
     '-' represents a don't-care.
     """
     size = 2 ** n_vars
-    return "".join(random.choice("01-") for _ in range(size))
+    return "".join(random.choice("01") for _ in range(size))
