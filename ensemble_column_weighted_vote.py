@@ -208,6 +208,56 @@ def assign_centered_weights(
     return weights
 
 
+def assign_exp_cutoff_weights(
+    f_tt: List[int],
+    ensemble: List[Dict],
+    B: int,
+    center: float = 0.5,
+    gamma: float = 10.0,
+) -> List[float]:
+    """
+    Exponential weights with cutoff below chance and normalization.
+
+        a_n = max(Acc_n - center, 0)
+        w_n_raw = exp(gamma * a_n) - 1
+        w_n = w_n_raw / sum_j w_j_raw   (if sum > 0)
+
+    - Circuits with Acc_n <= center get weight 0
+    - Weights sum to 1 when at least one circuit is above chance
+    - Stores accuracy in item["acc"] and normalized weight in item["weight"]
+    """
+    raw_weights: List[float] = []
+
+    # First pass: compute accuracies and raw exponential weights
+    for item in ensemble:
+        acc = subcircuit_accuracy_full_tt(f_tt, B, item)
+        item["acc"] = acc
+
+        a = max(acc - center, 0.0)
+        w_raw = math.exp(gamma * a) - 1.0 if a > 0.0 else 0.0
+
+        item["_raw_weight"] = w_raw
+        raw_weights.append(w_raw)
+
+    total_w = sum(raw_weights)
+
+    # Second pass: normalize (if possible)
+    weights: List[float] = []
+    if total_w > 0.0:
+        for item in ensemble:
+            w = item["_raw_weight"] / total_w
+            item["weight"] = w
+            weights.append(w)
+    else:
+        # All circuits are at or below chance → all weights zero
+        for item in ensemble:
+            item["weight"] = 0.0
+            weights.append(0.0)
+
+    return weights
+
+
+
 def ensemble_predict_weighted(
     x: int,
     ensemble: List[Dict],
@@ -279,12 +329,12 @@ def evaluate_ensemble_full_tt_weighted(
 def main():
     # ---- Experiment params ----
     B = 15
-    b = 10
+    b = 8
     N = 100
 
     # Target choice:
-    target = "junta"     # "random" or "junta"
-    junta_S = 10          # only used if target="junta"
+    target = "random"     # "random" or "junta"
+    junta_S = 6        # only used if target="junta"
 
     num_seeds = 10
     accuracies = []
@@ -308,7 +358,13 @@ def main():
         )
 
         # 1) compute per-subcircuit accuracy + centered weights
-        assign_centered_weights(f_tt, ensemble, B, center=0.5)
+
+        # accuracy-weighted method
+        # assign_centered_weights(f_tt, ensemble, B, center=0.5)
+
+        # # exponential accuracy-weighted
+        gamma = 100
+        assign_exp_cutoff_weights(f_tt, ensemble, B, center=0.5, gamma=gamma)
 
         # (optional) print a quick weight summary
         ws = [item["weight"] for item in ensemble]
