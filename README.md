@@ -17,14 +17,14 @@ Extends the nonzero-influence ensemble by applying softmax (temperature-controll
 ### `ensemble_nonzero_influence_accuracy_exp_weighted.py`
 Trains subcircuits on nonzero-influence bits and assigns weights based on each circuit’s full truth-table accuracy using an exponential cutoff rule. This explores accuracy-aware ensemble aggregation instead of influence-based weighting.
 
-<span style="color:red">
+
   
-### `friedgut_junta_pipeline.py`
+### 🔴 `friedgut_junta_pipeline.py`
 Implements an influence-based Boolean function approximation pipeline inspired by Friedgut’s Junta Theorem. It estimates influences, selects top influential variables, constructs a marginalized surrogate function, and applies Espresso minimization.
 
-### `friedgut_junta_pipeline_two_layer.py`
+### 🔴`friedgut_junta_pipeline_two_layer.py`
 Extends the junta pipeline to a two-layer residual model using XOR boosting. The second stage learns the residual errors of the first-stage predictor and combines predictions via $F \oplus G$ to improve accuracy.
-<\span>
+
 
 ## Other Files
 
