@@ -1,9 +1,9 @@
 # Espresso-Based Boolean Function Approximation and Decomposition
 
-This repository contains a collection of experiments and heuristics built around **Espresso Boolean minimization** (via PyEDA). The goal is to study scalability, approximation, and ensemble-style techniques for learning and compressing large Boolean functions represented as truth tables.
+This repository contains a collection of experiments and heuristics built around Espresso Boolean minimization (via PyEDA). The goal is to study scalability, approximation, and ensemble-style techniques for learning and compressing large Boolean functions represented explicitly as truth tables.
 
 ---
-## Influence-Based Ensembles and Junta Pipelines
+## Influence-Based Ensembles and Friedgut's Junta Pipelines
 
 ### `ensemble_column_influence_weighted_vote.py`
 Implements a column-based ensemble where each subcircuit is built from a random subset of input variables and weighted by the average influence of its selected bits. Final predictions are obtained via influence-weighted voting over projected majority truth tables.
@@ -21,7 +21,7 @@ Trains subcircuits on nonzero-influence bits and assigns weights based on each c
 Implements an influence-based Boolean function approximation pipeline inspired by Friedgut’s Junta Theorem. It estimates influences, selects top influential variables, constructs a marginalized surrogate function, and optionally applies Espresso minimization.
 
 ### `friedgut_junta_pipeline_two_layer.py`
-Extends the junta pipeline to a two-layer residual model using XOR boosting. The second stage learns the residual errors of the first-stage predictor and combines predictions via $F⊕G$ to improve accuracy.
+Extends the junta pipeline to a two-layer residual model using XOR boosting. The second stage learns the residual errors of the first-stage predictor and combines predictions via $F \oplus G$ to improve accuracy.
 
 
 ## Other Files
