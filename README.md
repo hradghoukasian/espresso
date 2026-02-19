@@ -5,6 +5,12 @@ This repository contains a collection of experiments and heuristics built around
 ---
 ## Influence-Based Ensembles and Friedgut's Junta Pipelines
 
+### 🔴 `friedgut_junta_pipeline.py`
+Implements an influence-based Boolean function approximation pipeline inspired by Friedgut’s Junta Theorem. It estimates influences, selects top influential variables, constructs a marginalized surrogate function, and applies Espresso minimization.
+
+### 🔴`friedgut_junta_pipeline_two_layer.py`
+Extends the junta pipeline to a two-layer residual model using XOR boosting. The second stage learns the residual errors of the first-stage predictor and combines predictions via $F \oplus G$ to improve accuracy.
+
 ### `ensemble_column_influence_weighted_vote.py`
 Implements a column-based ensemble where each subcircuit is built from a random subset of input variables and weighted by the average influence of its selected bits. Final predictions are obtained via influence-weighted voting over projected majority truth tables.
 
@@ -19,11 +25,6 @@ Trains subcircuits on nonzero-influence bits and assigns weights based on each c
 
 
   
-### 🔴 `friedgut_junta_pipeline.py`
-Implements an influence-based Boolean function approximation pipeline inspired by Friedgut’s Junta Theorem. It estimates influences, selects top influential variables, constructs a marginalized surrogate function, and applies Espresso minimization.
-
-### 🔴`friedgut_junta_pipeline_two_layer.py`
-Extends the junta pipeline to a two-layer residual model using XOR boosting. The second stage learns the residual errors of the first-stage predictor and combines predictions via $F \oplus G$ to improve accuracy.
 
 
 ## Other Files
