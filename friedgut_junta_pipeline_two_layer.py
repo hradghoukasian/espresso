@@ -21,6 +21,9 @@ def random_truth_table(B: int) -> List[int]:
     return [random.randint(0, 1) for _ in range(1 << B)]
 
 
+def ones_fraction(tt: List[int]) -> float:
+    return sum(tt) / len(tt)
+
 def random_s_junta_truth_table(B: int, S: int) -> Tuple[List[int], List[int]]:
     """
     Random S-junta on B bits:
@@ -339,6 +342,96 @@ def accuracy_full_from_preds(true_tt: List[int], pred_tt: List[int]) -> float:
 # Two-stage XOR residual boosting
 # ============================================================
 
+def run_m_stage_xor_boost(
+    m=3,                 # number of stages
+    seeds=10,
+    B=12,
+    S=6,
+    tau=0.01,
+    K=3,
+    T=1000,
+    R=200,
+    step1="exact",
+    step3="exact",
+    use_espresso=False,
+    verbose=False,
+):
+    """
+    For each seed:
+      - sample target f (here: random S-junta)
+      - initialize H0(x)=0
+      - for t=1..m:
+          residual r_t = f XOR H_{t-1}
+          train stage F_t ≈ r_t using Steps 1–4
+          update H_t = H_{t-1} XOR F_t
+      - report:
+          acc(H_t, f) for each stage, and final acc(H_m,f)
+          plus fraction of ones in f, residuals, and stage predictors (if verbose)
+
+    Note: By XOR algebra,
+      acc(H_t, f) == acc(F_t, r_t)  (pointwise equality of error events).
+    """
+    if isinstance(seeds, int):
+        seeds = list(range(seeds))
+
+    # Store per-stage accuracies across seeds
+    acc_H_by_stage = [[] for _ in range(m)]          # acc(H_t, f)
+    acc_stage_on_residual = [[] for _ in range(m)]   # acc(F_t, r_t)
+
+    for seed in seeds:
+        random.seed(seed)
+        np.random.seed(seed)
+
+        # Target function f
+        f_tt, true_junta_bits = random_s_junta_truth_table(B, S)
+
+        # Running predictor H_0 = 0
+        H_tt = [0] * (1 << B)
+
+        if verbose:
+            print(f"\n[seed={seed}]")
+            print(f"  True junta bits (hidden): {true_junta_bits}")
+            print(f"  frac_ones(f) = {ones_fraction(f_tt):.6f}")
+
+        for t in range(1, m + 1):
+            # Residual r_t = f XOR H_{t-1}
+            r_tt = xor_tt(f_tt, H_tt)
+
+            # Train stage t on residual
+            modelT, JT, _ = train_stage_from_tt(
+                r_tt, B=B, tau=tau, K=K, T=T, R=R,
+                step1=step1, step3=step3, use_espresso=use_espresso
+            )
+            F_t_hat_tt = predict_stage_full_tt(B, modelT, JT)
+
+            # Stage accuracy on residual
+            acc_Ft_on_rt = accuracy_full_from_preds(r_tt, F_t_hat_tt)
+
+            # Update running predictor
+            H_tt = xor_tt(H_tt, F_t_hat_tt)
+
+            # Overall accuracy after this stage
+            acc_Ht = accuracy_full_from_preds(f_tt, H_tt)
+
+            acc_stage_on_residual[t - 1].append(acc_Ft_on_rt)
+            acc_H_by_stage[t - 1].append(acc_Ht)
+
+            if verbose:
+                print(f"  stage {t}: |J|={len(JT)} JT={JT}")
+                print(f"    frac_ones(residual r_{t}) = {ones_fraction(r_tt):.6f}")
+                print(f"    frac_ones(F_{t})          = {ones_fraction(F_t_hat_tt):.6f}")
+                print(f"    acc(F_{t}, r_{t})         = {acc_Ft_on_rt:.6f}")
+                print(f"    acc(H_{t}, f)             = {acc_Ht:.6f}")
+
+    # ---- Print summary
+    print("\n=== M-STAGE XOR-RESIDUAL BOOST RESULT ===")
+    print(f"Stages (m): {m}")
+    print(f"Seeds:      {len(seeds)}")
+    for t in range(1, m + 1):
+        print(f"Stage {t}: Avg acc(F_{t}, r_{t}) = {float(np.mean(acc_stage_on_residual[t-1])):.6f} "
+              f"| Avg acc(H_{t}, f) = {float(np.mean(acc_H_by_stage[t-1])):.6f}")
+    print(f"Final:   Avg acc(H_{m}, f) = {float(np.mean(acc_H_by_stage[m-1])):.6f}")
+
 def run_two_stage_xor_boost(
     seeds=10,
     B=12,
@@ -400,6 +493,18 @@ def run_two_stage_xor_boost(
         acc_G_on_g_list.append(acc_G_on_g)
         acc_H_list.append(acc_H)
 
+        # ---- Fraction of label-1s
+        frac_f = ones_fraction(f_tt)
+        frac_F = ones_fraction(F_hat_tt)
+        frac_g = ones_fraction(g_tt)
+        frac_G = ones_fraction(G_hat_tt)
+
+        if verbose:
+            print(f"  frac_ones(f) = {frac_f:.6f}")
+            print(f"  frac_ones(F) = {frac_F:.6f}")
+            print(f"  frac_ones(g) = {frac_g:.6f}")
+            print(f"  frac_ones(G) = {frac_G:.6f}")
+
         if verbose:
             print(f"\n[seed={seed}]")
             print(f"  True junta bits (hidden): {true_junta_bits}")
@@ -418,17 +523,33 @@ def run_two_stage_xor_boost(
 # Run experiment
 # ============================================================
 
+# if __name__ == "__main__":
+#     run_two_stage_xor_boost(
+#         seeds=10,          # number of random seeds (or a list of ints)
+#         B=12,
+#         S=6,
+#         tau=0.01,
+#         K=3,
+#         T=1000,
+#         R=200,
+#         step1="exact",     # exact | oracle
+#         step3="exact",      # exact | mc | fwht
+#         use_espresso=False,
+#         verbose=False,
+#     )
+
 if __name__ == "__main__":
-    run_two_stage_xor_boost(
-        seeds=10,          # number of random seeds (or a list of ints)
-        B=12,
-        S=6,
+    run_m_stage_xor_boost(
+        m=100,
+        seeds=1,
+        B=15,
+        S=8,
         tau=0.01,
-        K=3,
+        K=6,
         T=1000,
         R=200,
         step1="exact",     # exact | oracle
-        step3="exact",      # exact | mc | fwht
+        step3="exact",     # exact | mc | fwht
         use_espresso=False,
         verbose=False,
     )
