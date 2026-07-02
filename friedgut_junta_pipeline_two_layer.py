@@ -540,10 +540,10 @@ def run_two_stage_xor_boost(
 
 if __name__ == "__main__":
     run_m_stage_xor_boost(
-        m=100,
-        seeds=1,
+        m=50,
+        seeds=10,
         B=15,
-        S=8,
+        S=12,
         tau=0.01,
         K=6,
         T=1000,

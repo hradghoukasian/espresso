@@ -1,39 +1,35 @@
 """
-friedgut_junta_pipeline_partial_tt.py
+friedgut_junta_pipeline_oracle_ablation.py
 
-multi-stage XOR residual learning with Espresso-based stage learners, WITHOUT access to the full 2^B truth table.
+Multi-stage XOR residual learning with Espresso-based stage learners, with
+independent ablations for:
 
-We have:
-  D_train = {(x_j, f(x_j))}_{j=1..T_train}
-  D_test  = {(x_j, f(x_j))}_{j=1..T_test}
+  1) Influence computation:
+       - "sample": use only observed neighbor pairs in D_train
+       - "oracle": use exact/full-truth-table influence of the residual
 
-Algorithm (m stages):
-  H_0(x) = 0
-  r_t(x) = f(x) XOR H_{t-1}(x)
+  2) Marginalization / projected surrogate construction:
+       - "sample": majority over observed training residuals only
+       - "oracle": exact/full-truth-table majority over all completions
 
-  1) Estimate influences Inf_i using ONLY observed neighbor pairs in the training set:
-
-  2) Select J_t = top-K bits among {i : Inf_i > tau}, ties broken randomly.
-     If fewer than K, keep smaller J_t.
-
-  3) Build projected surrogate g_t over {0,1}^{|J_t|} via empirical majority from training residuals:
-        for each u:
-            if u seen -> majority label (tie broken randomly)
-            if u unseen -> DON'T CARE '-'
-
-  4) Learn Espresso-minimized stage function from that partial truth table.
-
-Stage representation:
-  - bits: J_t (list of bit indices)
-  - tt_full: length 2^|J_t| list of 0/1 predictions for every projection pattern
-             (we fill DON'T CARE patterns using random 0/1 so we have a total function)
-  - expr_str: string for the minimized expression
-
-Prediction:
-  H_m(x) = XOR_{t=1..m} F_t(x)
+This extends the partial-truth-table Algorithm 3 setup from the attached Espresso
+PDF, where the baseline uses:
+  - sample-based influence from matched pairs P_i
+  - sample-based majority on observed A_t(u) only
 
 Requires:
   pip install pyeda
+
+Typical ablation settings:
+  - sample/sample   : original Algorithm 3 baseline
+  - oracle/sample   : exact influence only
+  - sample/oracle   : exact marginalization only
+  - oracle/oracle   : both exact
+
+Notes:
+  - Evaluation is always done on D_test (or any provided test set).
+  - "oracle" is intended for synthetic settings where we truly can evaluate f(x)
+    on the whole cube (e.g., random S-juntas).
 """
 
 from __future__ import annotations
@@ -41,7 +37,7 @@ import time
 import math
 import random
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 
 # ============================================================
@@ -74,26 +70,13 @@ except Exception as e:
 # ============================================================
 
 def proj_index(x: int, cols: Sequence[int]) -> int:
-    """Project x onto bits in cols (in given order) and return as an int in [0, 2^|cols|)."""
+    """Project x onto bits in cols (in given order) and return int in [0, 2^|cols|)."""
     idx = 0
     for j, bit in enumerate(cols):
         if (x >> bit) & 1:
             idx |= 1 << j
     return idx
 
-
-def print_learned_circuits(stages: List[Stage]) -> None:
-    print("\nLearned stage circuits:")
-    for t, st in enumerate(stages, start=1):
-        print(f"Stage {t}:")
-        print(f"  selected bits J_{t} = {st.bits}")
-        print(f"  espresso expr      = {st.expr_str}")
-    print()
-
-    if len(stages) > 0:
-        final_expr = " XOR ".join([f"F_{t}(x[J_{t}])" for t in range(1, len(stages) + 1)])
-        print("Final model:")
-        print(f"  H(x) = {final_expr}")
 
 # ============================================================
 # Synthetic target function: S-junta
@@ -116,10 +99,11 @@ def make_random_s_junta(B: int, S: int, rng: random.Random) -> SJunta:
     return SJunta(B=B, junta_bits=junta_bits, junta_tt=junta_tt)
 
 
-def sample_dataset(f: SJunta, T: int, rng: random.Random) -> Tuple[List[int], List[int]]:
-    """Uniform random samples over {0,1}^B, with labels from f."""
-    # xs = [rng.randrange(1 << f.B) for _ in range(T)]    # sampling with replacement
-    xs = rng.sample(range(1 << f.B), T)   # sampling w/o replacement
+def sample_dataset(f: Callable[[int], int], B: int, T: int, rng: random.Random) -> Tuple[List[int], List[int]]:
+    """Uniform random samples over {0,1}^B, sampled without replacement."""
+    if T > (1 << B):
+        raise ValueError(f"T={T} exceeds full cube size 2^B={1 << B}.")
+    xs = rng.sample(range(1 << B), T)
     ys = [f(x) for x in xs]
     return xs, ys
 
@@ -162,7 +146,7 @@ def accuracy(stages: List[Stage], xs: Sequence[int], ys: Sequence[int]) -> float
 
 
 # ============================================================
-# Influence estimation from observed neighbor pairs
+# Influence estimation from observed neighbor pairs (sample mode)
 # ============================================================
 
 def influences_from_dataset_pairs(
@@ -200,6 +184,39 @@ def influences_from_dataset_pairs(
 
 
 # ============================================================
+# Exact influence over the full truth table (oracle mode)
+# ============================================================
+
+def exact_influences_full_cube(
+    B: int,
+    residual_full: Sequence[int],
+) -> Tuple[List[float], List[int]]:
+    """
+    Exact influence:
+      Inf_i(r) = Pr_x[r(x) != r(x^e_i)]
+
+    Computed over the entire cube.
+
+    Returns:
+      influences: length B
+      pair_counts: length B, set to full-cube count 2^B for logging compatibility
+    """
+    size = 1 << B
+    influences = [0.0] * B
+    pair_counts = [size] * B
+
+    for i in range(B):
+        mask = 1 << i
+        mismatches = 0
+        for x in range(size):
+            if residual_full[x] != residual_full[x ^ mask]:
+                mismatches += 1
+        influences[i] = mismatches / size
+
+    return influences, pair_counts
+
+
+# ============================================================
 # Select J_t = top-K among {i : Inf_i > tau}, ties broken randomly
 # If fewer than K, keep smaller J_t.
 # ============================================================
@@ -218,7 +235,7 @@ def select_topK_with_threshold(
 
 # ============================================================
 # Build projected surrogate g_t with DON'T CARE for unseen patterns
-# Tie-breaking in majorities: random
+# (sample mode)
 # ============================================================
 
 def build_projected_majority_tt_with_dc(
@@ -259,6 +276,59 @@ def build_projected_majority_tt_with_dc(
         if c0 == 0 and c1 == 0:
             tt_list.append("-")  # unseen -> don't care
         elif c1 > c0:
+            tt_list.append("1")
+        elif c0 > c1:
+            tt_list.append("0")
+        else:
+            tt_list.append(str(rng.randint(0, 1)))  # tie -> random
+
+    return tt_list, k
+
+
+# ============================================================
+# Exact projected majority over the full truth table (oracle mode)
+# ============================================================
+
+def build_projected_majority_tt_oracle(
+    B: int,
+    residual_full: Sequence[int],
+    J: Sequence[int],
+    rng: random.Random,
+) -> Tuple[List[str], int]:
+    """
+    Exact projected surrogate:
+      g(u) = Maj{ r(x) : proj_J(x) = u }
+
+    Since we use the full cube, every u is seen; so no '-' appears.
+    We still return a List[str] over {'0','1'} for compatibility.
+    """
+    k = len(J)
+    if k == 0:
+        c1 = sum(residual_full)
+        c0 = len(residual_full) - c1
+        if c1 > c0:
+            return ["1"], 0
+        if c0 > c1:
+            return ["0"], 0
+        return [str(rng.randint(0, 1))], 0
+
+    size = 1 << k
+    count0 = [0] * size
+    count1 = [0] * size
+
+    full_size = 1 << B
+    for x in range(full_size):
+        u = proj_index(x, J)
+        r = residual_full[x]
+        if r == 1:
+            count1[u] += 1
+        else:
+            count0[u] += 1
+
+    tt_list: List[str] = []
+    for u in range(size):
+        c0, c1 = count0[u], count1[u]
+        if c1 > c0:
             tt_list.append("1")
         elif c0 > c1:
             tt_list.append("0")
@@ -343,7 +413,80 @@ def learn_espresso_stage_from_tt(
 
 
 # ============================================================
-# Training loop (NOW returns stage_test_acc dict for tracked stages)
+# Residual helpers
+# ============================================================
+
+def compute_residuals_on_train(
+    stages: List[Stage],
+    x_train: Sequence[int],
+    y_train: Sequence[int],
+) -> Tuple[List[int], Dict[int, int]]:
+    r_train: List[int] = []
+    residual_map: Dict[int, int] = {}
+    for x, y in zip(x_train, y_train):
+        ht = predict_model(stages, x)
+        r = y ^ ht
+        r_train.append(r)
+        residual_map[x] = r
+    return r_train, residual_map
+
+
+def compute_residuals_on_full_cube(
+    B: int,
+    stages: List[Stage],
+    oracle_f: Callable[[int], int],
+) -> List[int]:
+    size = 1 << B
+    residual_full = [0] * size
+    for x in range(size):
+        residual_full[x] = oracle_f(x) ^ predict_model(stages, x)
+    return residual_full
+
+
+# ============================================================
+# Unified oracle/sample wrappers
+# ============================================================
+
+def compute_influences(
+    B: int,
+    x_train: Sequence[int],
+    residual_map: Dict[int, int],
+    influence_mode: str,
+    residual_full: Optional[Sequence[int]] = None,
+) -> Tuple[List[float], List[int]]:
+    if influence_mode == "sample":
+        return influences_from_dataset_pairs(B, x_train, residual_map)
+
+    if influence_mode == "oracle":
+        if residual_full is None:
+            raise ValueError("residual_full must be provided when influence_mode='oracle'.")
+        return exact_influences_full_cube(B, residual_full)
+
+    raise ValueError(f"Unknown influence_mode={influence_mode!r}. Use 'sample' or 'oracle'.")
+
+
+def build_projected_surrogate_tt(
+    B: int,
+    x_train: Sequence[int],
+    r_train: Sequence[int],
+    J: Sequence[int],
+    rng: random.Random,
+    marginal_mode: str,
+    residual_full: Optional[Sequence[int]] = None,
+) -> Tuple[List[str], int]:
+    if marginal_mode == "sample":
+        return build_projected_majority_tt_with_dc(x_train, r_train, J, rng=rng)
+
+    if marginal_mode == "oracle":
+        if residual_full is None:
+            raise ValueError("residual_full must be provided when marginal_mode='oracle'.")
+        return build_projected_majority_tt_oracle(B, residual_full, J, rng=rng)
+
+    raise ValueError(f"Unknown marginal_mode={marginal_mode!r}. Use 'sample' or 'oracle'.")
+
+
+# ============================================================
+# Training loop with oracle ablations
 # ============================================================
 
 def train_multistage_xor_espresso(
@@ -358,6 +501,9 @@ def train_multistage_xor_espresso(
     seed: int = 0,
     verbose: bool = True,
     track_stages: Optional[List[int]] = None,
+    influence_mode: str = "sample",   # "sample" or "oracle"
+    marginal_mode: str = "sample",    # "sample" or "oracle"
+    oracle_f: Optional[Callable[[int], int]] = None,
 ) -> Tuple[List[Stage], Dict[int, float]]:
     rng = random.Random(seed)
     stages: List[Stage] = []
@@ -367,6 +513,15 @@ def train_multistage_xor_espresso(
     track_set = set(track_stages)
     stage_test_acc: Dict[int, float] = {}
 
+    if influence_mode not in {"sample", "oracle"}:
+        raise ValueError("influence_mode must be 'sample' or 'oracle'.")
+    if marginal_mode not in {"sample", "oracle"}:
+        raise ValueError("marginal_mode must be 'sample' or 'oracle'.")
+
+    need_oracle = (influence_mode == "oracle") or (marginal_mode == "oracle")
+    if need_oracle and (oracle_f is None):
+        raise ValueError("oracle_f must be provided when using any oracle mode.")
+
     if verbose and (not PYEDA_OK):
         print(f"[warn] PyEDA import failed: {PYEDA_IMPORT_ERR}")
         print("[warn] Will run WITHOUT Espresso minimization (still trains/predicts).")
@@ -375,30 +530,46 @@ def train_multistage_xor_espresso(
         print("[warn] pyeda.inter.espresso_exprs not available in your PyEDA build.")
         print("[warn] Will run WITHOUT Espresso minimization (still trains/predicts).")
 
+    if verbose:
+        print(f"[config] influence_mode={influence_mode} marginal_mode={marginal_mode}")
+
     for t in range(1, m + 1):
         # 1) residual on training samples
-        r_train: List[int] = []
-        residual_map: Dict[int, int] = {}
-        for x, y in zip(x_train, y_train):
-            ht = predict_model(stages, x)
-            r = y ^ ht
-            r_train.append(r)
-            residual_map[x] = r
+        r_train, residual_map = compute_residuals_on_train(stages, x_train, y_train)
 
-        # 2) influences from observed neighbor pairs only
-        infl, pair_counts = influences_from_dataset_pairs(B, x_train, residual_map)
+        # Optional full-cube residual for oracle computations
+        residual_full: Optional[List[int]] = None
+        if need_oracle:
+            residual_full = compute_residuals_on_full_cube(B, stages, oracle_f)
+
+        # 2) influences
+        infl, pair_counts = compute_influences(
+            B=B,
+            x_train=x_train,
+            residual_map=residual_map,
+            influence_mode=influence_mode,
+            residual_full=residual_full,
+        )
 
         # 3) select J_t
         J = select_topK_with_threshold(infl, K=K, tau=tau, rng=rng)
 
-        # 4) projected majority over J (unseen -> don't care)
-        tt_list, k = build_projected_majority_tt_with_dc(x_train, r_train, J, rng=rng)
+        # 4) projected surrogate over J
+        tt_list, k = build_projected_surrogate_tt(
+            B=B,
+            x_train=x_train,
+            r_train=r_train,
+            J=J,
+            rng=rng,
+            marginal_mode=marginal_mode,
+            residual_full=residual_full,
+        )
 
-        # 5) learn stage
+        # 5) learn stage with Espresso
         tt_full, expr_str = learn_espresso_stage_from_tt(tt_list, k=k, rng=rng)
         stages.append(Stage(bits=list(J), tt_full=tt_full, expr_str=expr_str))
 
-        # Track test accuracy at specific stages
+        # Track stage-specific test accuracy
         if (x_test is not None) and (y_test is not None) and (t in track_set):
             stage_test_acc[t] = accuracy(stages, x_test, y_test)
 
@@ -407,9 +578,12 @@ def train_multistage_xor_espresso(
             train_acc = accuracy(stages, x_train, y_train)
             msg = f"[stage {t:02d}] |J|={len(J)} tau={tau:.4g} train_acc={train_acc:.4f}"
 
-            nonzero_pairs = sum(1 for c in pair_counts if c > 0)
-            avg_pairs = sum(pair_counts) / max(1, B)
-            msg += f"  pairbits_nonzero={nonzero_pairs}/{B} avg_|P_i|={avg_pairs:.2f}"
+            if influence_mode == "sample":
+                nonzero_pairs = sum(1 for c in pair_counts if c > 0)
+                avg_pairs = sum(pair_counts) / max(1, B)
+                msg += f"  pairbits_nonzero={nonzero_pairs}/{B} avg_|P_i|={avg_pairs:.2f}"
+            else:
+                msg += "  exact_influence=full_cube"
 
             if len(J) > 0:
                 size = 1 << len(J)
@@ -418,6 +592,9 @@ def train_multistage_xor_espresso(
                 msg += f"  sel_infl=[{format_selected_influences(J, infl)}]"
             else:
                 msg += "  sel_infl=[]"
+
+            if marginal_mode == "oracle":
+                msg += "  proj_majority=full_cube"
 
             if x_test is not None and y_test is not None:
                 test_acc_now = accuracy(stages, x_test, y_test)
@@ -454,6 +631,8 @@ def run_many_seeds(
     m: int,
     tau: float,
     stage_points: List[int],
+    influence_mode: str = "sample",
+    marginal_mode: str = "sample",
     verbose_each_seed: bool = False,
 ) -> None:
 
@@ -471,8 +650,8 @@ def run_many_seeds(
         rng = random.Random(seed)
 
         f = make_random_s_junta(B=B, S=S, rng=rng)
-        x_train, y_train = sample_dataset(f, T_train, rng=rng)
-        x_test, y_test = sample_dataset(f, T_test, rng=rng)
+        x_train, y_train = sample_dataset(f, B=B, T=T_train, rng=rng)
+        x_test, y_test = sample_dataset(f, B=B, T=T_test, rng=rng)
 
         if verbose_each_seed:
             print("\n" + "=" * 80)
@@ -493,10 +672,10 @@ def run_many_seeds(
             seed=seed,
             verbose=verbose_each_seed,
             track_stages=stage_points,
+            influence_mode=influence_mode,
+            marginal_mode=marginal_mode,
+            oracle_f=f,
         )
-
-        if verbose_each_seed:
-            print_learned_circuits(stages)
 
         # END TIMING
         t1 = time.perf_counter()
@@ -518,65 +697,123 @@ def run_many_seeds(
 
         print(
             f"[seed {seed}] "
+            f"mode=({influence_mode},{marginal_mode})  "
             f"train={final_train:.4f} "
             f"test={final_test:.4f} "
             f"time={elapsed:.2f}s  "
             f"{tracked_str}"
         )
 
-    # =======================
     # Summary statistics
-    # =======================
-
     mu_tr, sd_tr = mean_std(train_accs)
     mu_te, sd_te = mean_std(test_accs)
     mu_time, sd_time = mean_std(train_times)
 
     print("\n" + "#" * 80)
     print(f"Summary over {num_seeds} seeds (base_seed={base_seed})")
-    print(f"B={B}, S={S}, T_train={T_train}, T_test={T_test}, K={K}, m={m}, tau={tau}")
+    print(
+        f"B={B}, S={S}, T_train={T_train}, T_test={T_test}, "
+        f"K={K}, m={m}, tau={tau}, "
+        f"influence_mode={influence_mode}, marginal_mode={marginal_mode}"
+    )
     print()
     print(f"Final TRAIN accuracy: mean={mu_tr:.4f}, std={sd_tr:.4f}")
     print(f"Final TEST  accuracy: mean={mu_te:.4f}, std={sd_te:.4f}")
-    print()
-    print(f"Training time (full multi-stage circuit):")
-    print(f"  mean={mu_time:.2f}s, std={sd_time:.2f}s")
-    print(f"  avg per stage ≈ {mu_time / m:.3f}s")
-    print()
-
     for sp in stage_points:
-        vals = [v for v in stage_test_accs[sp] if not math.isnan(v)]
-        mu_sp, sd_sp = mean_std(vals)
-        print(f"TEST accuracy at stage {sp:>3}: mean={mu_sp:.4f}, std={sd_sp:.4f}")
+        mu_sp, sd_sp = mean_std(stage_test_accs[sp])
+        print(f"TEST accuracy at stage {sp}: mean={mu_sp:.4f}, std={sd_sp:.4f}")
+    print(f"Training time: mean={mu_time:.2f}s, std={sd_time:.2f}s")
+    print("#" * 80)
 
-    print("#" * 80 + "\n")
 
 # ============================================================
-# Main
+# Convenience helper: run the 4 ablation configurations
 # ============================================================
 
-def main():
-    # Initial dimension and true junta size
-    B = 15
+def run_ablation_suite(
+    num_seeds: int,
+    base_seed: int,
+    B: int,
+    S: int,
+    T_train: int,
+    T_test: int,
+    K: int,
+    m: int,
+    tau: float,
+    stage_points: List[int],
+    verbose_each_seed: bool = False,
+) -> None:
+    configs = [
+        ("sample", "sample"),
+        ("oracle", "sample"),
+        ("sample", "oracle"),
+        ("oracle", "oracle"),
+    ]
+
+    for influence_mode, marginal_mode in configs:
+        print("\n" + "=" * 100)
+        print(f"Ablation config: influence_mode={influence_mode}, marginal_mode={marginal_mode}")
+        print("=" * 100)
+        run_many_seeds(
+            num_seeds=num_seeds,
+            base_seed=base_seed,
+            B=B,
+            S=S,
+            T_train=T_train,
+            T_test=T_test,
+            K=K,
+            m=m,
+            tau=tau,
+            stage_points=stage_points,
+            influence_mode=influence_mode,
+            marginal_mode=marginal_mode,
+            verbose_each_seed=verbose_each_seed,
+        )
+
+
+# ============================================================
+# Example main
+# ============================================================
+
+if __name__ == "__main__":
+    # Example settings similar to your current script style
+    B = 13
     S = 8
-
-    # Samples
-    T_train = 2**B
-    T_test = 2**B
-
-    # Algorithm hyperparameters
+    T_train = 4000
+    T_test = 4000
     K = 6
-    m = 5
+    m = 20
     tau = 0.02
+    stage_points = [1, 5, 20]
 
-    # Multi-seed experiment settings
-    num_seeds = 1
+    num_seeds = 10
     base_seed = 42
 
-    # stage 1, 5, 20
-    stage_points = [1, 5]
+    # # --------------------------------------------------------
+    # # Run one specific configuration
+    # # --------------------------------------------------------
+    # print("\nRunning a single configuration...\n")
+    # run_many_seeds(
+    #     num_seeds=num_seeds,
+    #     base_seed=base_seed,
+    #     B=B,
+    #     S=S,
+    #     T_train=T_train,
+    #     T_test=T_test,
+    #     K=K,
+    #     m=m,
+    #     tau=tau,
+    #     stage_points=stage_points,
+    #     influence_mode="sample",   # change to "oracle" if desired
+    #     marginal_mode="sample",    # change to "oracle" if desired
+    #     verbose_each_seed=False,
+    # )
 
-    run_many_seeds(
+    # --------------------------------------------------------
+    # Run all 4 ablations
+    # --------------------------------------------------------
+    print("\nRunning the full 4-way ablation suite...\n")
+    run_ablation_suite(
         num_seeds=num_seeds,
         base_seed=base_seed,
         B=B,
@@ -587,8 +824,5 @@ def main():
         m=m,
         tau=tau,
         stage_points=stage_points,
-        verbose_each_seed=True,  # True prints per-stage logs for each seed
+        verbose_each_seed=False,
     )
-
-if __name__ == "__main__":
-    main()
