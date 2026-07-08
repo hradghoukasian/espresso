@@ -1,0 +1,4 @@
+B,S-junta,K,stages,train_size,test_size,num_seeds,epochs,method,test_accuracy_mean,test_accuracy_std,test_accuracy_mean_pm_std,runtime_s_mean,runtime_s_std,runtime_s_mean_pm_std,total_hidden_neurons_mean_pm_std
+12,6,4,20,1000,4096,20,10000,Algorithm 4 exact ReLU (compiled from Algorithm 3),0.8484375,0.04334279480885035,0.848 +- 0.043,0.3587675050002872,0.07126172410724643,0.36 +- 0.07,52.5 +- 3.1
+12,6,4,20,1000,4096,20,10000,Trained ReLU MLP (matched architecture),0.99990234375,0.00043673202685542766,1.000 +- 0.000,82.55708402500022,10.237321533419891,82.56 +- 10.24,52.5 +- 3.1
+12,6,4,20,1000,4096,20,10000,Trained Sigmoid MLP (matched architecture),0.96556396484375,0.05724385820566068,0.966 +- 0.057,81.62321476999932,10.307377173580138,81.62 +- 10.31,52.5 +- 3.1

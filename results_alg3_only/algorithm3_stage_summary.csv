@@ -1,0 +1,4 @@
+method,B,S-junta,K,train_size,test_size,test_accuracy_mean,test_accuracy_std,test_accuracy_mean_pm_std,train_runtime_s_mean,train_runtime_s_std,train_runtime_s_mean_pm_std,selected_size_mean,selected_size_std,selected_size_mean_pm_std
+Algorithm 3 (stage 1),12,8,6,1000,4096,0.708203125,0.021436662030960073,0.708 +- 0.021,0.005401059998257551,0.0017148344379211702,0.01 +- 0.00,6,0.0,6.00 +- 0.00
+Algorithm 3 (stage 5),12,8,6,1000,4096,0.82265625,0.026746892880910388,0.823 +- 0.027,0.6768421650092933,0.08534248889373407,0.68 +- 0.09,6,0.0,6.00 +- 0.00
+Algorithm 3 (stage 20),12,8,6,1000,4096,0.8421875,0.03194639353718812,0.842 +- 0.032,8.40721868500259,2.371911554470974,8.41 +- 2.37,6,0.0,6.00 +- 0.00
