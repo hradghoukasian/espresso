@@ -949,11 +949,11 @@ def run_experiment(args: argparse.Namespace) -> Path:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
-    p.add_argument("--B", type=int, default=12, help="ambient input dimension")
-    p.add_argument("--S", type=int, default=8, help="number of relevant variables in random S-junta")
-    p.add_argument("--train-size", type=int, default=500)
-    p.add_argument("--test-size", type=int, default=2**12)
-    p.add_argument("--K", type=int, default=6, help="top-K selected variables per residual stage")
+    p.add_argument("--B", type=int, default=20, help="ambient input dimension")
+    p.add_argument("--S", type=int, default=12, help="number of relevant variables in random S-junta")
+    p.add_argument("--train-size", type=int, default=2**)
+    p.add_argument("--test-size", type=int, default=2**17)
+    p.add_argument("--K", type=int, default=10, help="top-K selected variables per residual stage")
     p.add_argument("--tau", type=float, default=0.0, help="influence threshold")
     p.add_argument("--stages", type=int, default=20, help="number of residual stages")
     p.add_argument("--stage-points", type=int, nargs="+", default=[1, 5,20], help="stages at which to report Algorithm 3 accuracy/runtime")
