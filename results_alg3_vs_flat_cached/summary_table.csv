@@ -1,0 +1,5 @@
+method,B,S-junta,K,train_size,test_size,test_accuracy_mean,test_accuracy_std,test_accuracy_mean_pm_std,train_runtime_s_mean,train_runtime_s_std,train_runtime_s_mean_pm_std
+Algorithm 3 (stage 1),20,8,6,40,131072,0.5247020721435547,0.03437997441368394,0.525 +- 0.034,0.0002527549986552913,6.587026727933471e-05,0.00 +- 0.00
+Algorithm 3 (stage 5),20,8,6,40,131072,0.527865982055664,0.03173181901183853,0.528 +- 0.032,0.0014565500008757227,0.0002644989593429877,0.00 +- 0.00
+Algorithm 3 (stage 20),20,8,6,40,131072,0.5186359405517578,0.0381931048694176,0.519 +- 0.038,0.010387199991237139,0.003162236018751414,0.01 +- 0.00
+Flat Espresso (ambient B partial TT),20,8,6,40,131072,nan,nan,NA,nan,nan,NA
