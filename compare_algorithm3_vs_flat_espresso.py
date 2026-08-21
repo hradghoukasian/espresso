@@ -1271,19 +1271,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--B",
         type=int,
-        default=20,
+        default=21,
         help="ambient input dimension",
     )
     parser.add_argument(
         "--S",
         type=int,
-        default=8,
+        default=10,
         help="number of relevant variables in the random S-junta",
     )
     parser.add_argument(
         "--train-size",
         type=int,
-        default=2**20,
+        default=2**21,
     )
     parser.add_argument(
         "--test-size",
@@ -1293,7 +1293,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--K",
         type=int,
-        default=6,
+        default=8,
         help="maximum selected variables per residual stage",
     )
     parser.add_argument(

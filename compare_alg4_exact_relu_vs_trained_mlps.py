@@ -726,12 +726,12 @@ def run_experiment(args: argparse.Namespace) -> Path:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
-    p.add_argument("--B", type=int, default=20, help="ambient input dimension")
-    p.add_argument("--S", type=int, default=8, help="number of relevant variables in random S-junta")
-    p.add_argument("--train-size", type=int, default=2**20)
+    p.add_argument("--B", type=int, default=21, help="ambient input dimension")
+    p.add_argument("--S", type=int, default=10, help="number of relevant variables in random S-junta")
+    p.add_argument("--train-size", type=int, default=2**21)
     p.add_argument("--test-size", type=int, default=2**17, help="ignored when --full-cube-test is used")
     p.add_argument("--full-cube-test", action="store_true", help="evaluate on all 2^B Boolean inputs")
-    p.add_argument("--K", type=int, default=6, help="top-K selected variables per residual stage")
+    p.add_argument("--K", type=int, default=8, help="top-K selected variables per residual stage")
     p.add_argument("--tau", type=float, default=0.0, help="influence threshold")
     p.add_argument("--stages", type=int, default=20, help="number of residual stages")
     p.add_argument("--num-seeds", type=int, default=20)

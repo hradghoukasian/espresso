@@ -1,0 +1,2 @@
+method,B,S-junta,K,train_size,test_size,stages,final_test_accuracy_mean,final_test_accuracy_std,final_test_accuracy_mean_pm_std,train_runtime_s_mean,train_runtime_s_std,train_runtime_s_mean_pm_std,mean_selected_size_mean,mean_selected_size_std,stopping_stage_mean,stopping_stage_std
+Algorithm 3 (random K ablation),20,8,6,1048576,131072,20,0.6612178802490234,0.0338088590243159,0.661 +- 0.034,406.11174876999866,26.215769168727967,406.11 +- 26.22,6.0,0.0,20.0,0.0
