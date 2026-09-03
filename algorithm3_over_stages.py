@@ -1,7 +1,7 @@
 """
 algorithm3_accuracy_over_stages.py
 
-Experiment: run Algorithm 3 (sample-based multi-stage influence residual learning
+Experiment: run Algorithm 1 (sample-based multi-stage influence residual learning
 on a partial truth table) and report test accuracy over residual stages.
 
 
@@ -132,7 +132,7 @@ def espresso_learn(tt: Sequence[str], n_vars: int) -> List[int]:
 
 
 # ============================================================
-# Algorithm 3
+# Algorithm 1
 # ============================================================
 
 def influences(

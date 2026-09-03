@@ -3,16 +3,16 @@
 Experiment:
   1) Generate a random S-junta f:{0,1}^B -> {0,1}.
   2) Sample a partial truth table D_train and a test set D_test.
-  3) Run Algorithm 3: multi-stage influence-based residual learning with Espresso.
-  4) Convert the learned Algorithm-3 predictor into an exact ReLU MLP
-     (Algorithm-4-style explicit Boolean-gate-to-ReLU construction).
+  3) Run Algorithm 1: multi-stage influence-based residual learning with Espresso.
+  4) Convert the learned Algorithm-1 predictor into an exact ReLU MLP
+     (Algorithm-2-style explicit Boolean-gate-to-ReLU construction).
   5) Train a standard ReLU MLP and a standard Sigmoid MLP on the same D_train,
      using the same number of hidden layers and the same hidden widths as the
      compiled exact ReLU network.
   6) Compare test accuracy and training/construction runtime over seeds.
 
 Notes:
-  - Training time reported for Algorithm 4 includes Algorithm 3 training plus
+  - Training time reported for Algorithm 2 includes Algorithm 1 training plus
     exact ReLU construction time, and excludes test evaluation time.
   - Training time reported for trainable MLPs excludes test evaluation time.
 
@@ -140,7 +140,7 @@ def accuracy_from_int_predictor(predict_fn, xs: Sequence[int], ys: Sequence[int]
 
 
 # -----------------------------------------------------------------------------
-# Espresso wrapper and Algorithm 3
+# Espresso wrapper and Algorithm 1
 # -----------------------------------------------------------------------------
 
 @dataclass
@@ -185,7 +185,7 @@ def espresso_learn_tt(tt: Sequence[str], n_vars: int) -> EspressoModel:
     expr, = espresso_tts(f_tt)
 
     # Cache the learned total function on all projected inputs. This makes
-    # Algorithm-3 prediction and exact ReLU compilation fast and deterministic.
+    # Algorithm-1 prediction and exact ReLU compilation fast and deterministic.
     full = []
     for u in range(1 << n_vars):
         assignment = {X[j]: ((u >> j) & 1) for j in range(n_vars)}
@@ -215,7 +215,7 @@ def influences_from_observed_pairs(
     x_train: Sequence[int],
     residual_map: Dict[int, int],
 ) -> Tuple[List[float], List[int]]:
-    """Algorithm-3 influence estimator using observed Hamming-neighbor pairs."""
+    """Algorithm-1 influence estimator using observed Hamming-neighbor pairs."""
     xset = set(x_train)
     influences = [0.0] * B
     pair_counts = [0] * B
@@ -289,7 +289,7 @@ def train_algorithm3(
     y_train: Sequence[int],
     seed: int,
 ) -> Tuple[List[Stage], float]:
-    """Train Algorithm 3. Return learned stages and pure training runtime."""
+    """Train Algorithm 1. Return learned stages and pure training runtime."""
     rng = random.Random(seed)
     stages: List[Stage] = []
     cumulative_train_time = 0.0
@@ -316,19 +316,19 @@ def train_algorithm3(
 
 
 # -----------------------------------------------------------------------------
-# Algorithm-4-style exact ReLU construction from the learned stages
+# Algorithm-2-style exact ReLU construction from the learned stages
 # -----------------------------------------------------------------------------
 
 class ExactReluFromAlgorithm3(nn.Module):
     """
-    Exact ReLU realization of the learned Algorithm-3 Boolean predictor.
+    Exact ReLU realization of the learned Algorithm-1 Boolean predictor.
 
     Construction:
       - Layer 1: one ReLU minterm neuron for each 1-entry in each stage truth table.
       - Layer 2: sums minterms belonging to each stage, giving stage outputs.
       - Layer 3/output: ReLU piecewise-linear parity of the sum of stage outputs.
 
-    This network is intended for Boolean inputs. It agrees with Algorithm 3 on
+    This network is intended for Boolean inputs. It agrees with Algorithm 1 on
     {0,1}^B up to numerical precision.
     """
 
@@ -568,7 +568,7 @@ def run_experiment(args: argparse.Namespace) -> Path:
 
         print(f"[seed {seed}] junta_bits={f.junta_bits}")
 
-        # Algorithm 3 training.
+        # Algorithm 1 training.
         stages, alg3_train_time = train_algorithm3(
             B=args.B,
             K=args.K,
@@ -580,7 +580,7 @@ def run_experiment(args: argparse.Namespace) -> Path:
         )
         alg3_acc = accuracy_from_int_predictor(lambda z: predict_algorithm3(stages, z), x_test, y_test)
 
-        # Algorithm 4 exact ReLU construction.
+        # Algorithm 2 exact ReLU construction.
         compile_start = time.perf_counter()
         exact_relu = ExactReluFromAlgorithm3(B=args.B, stages=stages)
         compile_time = time.perf_counter() - compile_start
@@ -653,7 +653,7 @@ def run_experiment(args: argparse.Namespace) -> Path:
         per_seed_rows.append(row)
 
         print(
-            f"  Algorithm 3 / exact ReLU: acc={exact_acc:.4f}, "
+            f"  Algorithm 1 / exact ReLU: acc={exact_acc:.4f}, "
             f"time={exact_total_time:.2f}s, widths={hidden_widths}, "
             f"agreement_gap={agreement_gap:.2e}"
         )
@@ -675,7 +675,7 @@ def run_experiment(args: argparse.Namespace) -> Path:
 
     for item in [
         summarize_method(
-            "Algorithm 4 exact ReLU (compiled from Algorithm 3)",
+            "Algorithm 2 exact ReLU (compiled from Algorithm 1)",
             per_seed_rows,
             "alg4_exact_relu_test_acc",
             "alg4_total_construction_time_s",

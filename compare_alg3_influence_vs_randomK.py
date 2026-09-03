@@ -307,7 +307,7 @@ def run_experiment(args: argparse.Namespace) -> Path:
     stop_mu, stop_sd = mean_std(row["random_stopping_stage"] for row in per_seed_rows)
 
     summary_row = {
-        "method": "Algorithm 3 (random K ablation)",
+        "method": "Algorithm 1 (random K ablation)",
         "B": args.B,
         "S-junta": args.S,
         "K": args.K,
