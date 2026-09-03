@@ -203,7 +203,7 @@ class Stage:
         return int(self.tt_full[proj_index(x, self.bits)])
 
 
-def predict_algorithm3(stages: Sequence[Stage], x: int) -> int:
+def predict_algorithm1(stages: Sequence[Stage], x: int) -> int:
     y = 0
     for st in stages:
         y ^= st.predict_one(x)
@@ -280,7 +280,7 @@ def projected_residual_partial_tt(
     return out
 
 
-def train_algorithm3(
+def train_algorithm1(
     B: int,
     K: int,
     tau: float,
@@ -300,7 +300,7 @@ def train_algorithm3(
         r_train: List[int] = []
         residual_map: Dict[int, int] = {}
         for x, y in zip(x_train, y_train):
-            r = int(y) ^ predict_algorithm3(stages, x)
+            r = int(y) ^ predict_algorithm1(stages, x)
             r_train.append(r)
             residual_map[x] = r
 
@@ -319,7 +319,7 @@ def train_algorithm3(
 # Algorithm-2-style exact ReLU construction from the learned stages
 # -----------------------------------------------------------------------------
 
-class ExactReluFromAlgorithm3(nn.Module):
+class ExactReluFromAlgorithm1(nn.Module):
     """
     Exact ReLU realization of the learned Algorithm-1 Boolean predictor.
 
@@ -407,7 +407,7 @@ class ExactReluFromAlgorithm3(nn.Module):
 
 
 @torch.no_grad()
-def exact_relu_accuracy(model: ExactReluFromAlgorithm3, xs: Sequence[int], ys: Sequence[int], B: int, batch_size: int = 8192) -> float:
+def exact_relu_accuracy(model: ExactReluFromAlgorithm1, xs: Sequence[int], ys: Sequence[int], B: int, batch_size: int = 8192) -> float:
     model.eval()
     y_np = np.asarray(ys, dtype=np.int64)
     correct = 0
@@ -569,7 +569,7 @@ def run_experiment(args: argparse.Namespace) -> Path:
         print(f"[seed {seed}] junta_bits={f.junta_bits}")
 
         # Algorithm 1 training.
-        stages, alg3_train_time = train_algorithm3(
+        stages, alg3_train_time = train_algorithm1(
             B=args.B,
             K=args.K,
             tau=args.tau,
@@ -578,11 +578,11 @@ def run_experiment(args: argparse.Namespace) -> Path:
             y_train=y_train,
             seed=seed,
         )
-        alg3_acc = accuracy_from_int_predictor(lambda z: predict_algorithm3(stages, z), x_test, y_test)
+        alg3_acc = accuracy_from_int_predictor(lambda z: predict_algorithm1(stages, z), x_test, y_test)
 
         # Algorithm 2 exact ReLU construction.
         compile_start = time.perf_counter()
-        exact_relu = ExactReluFromAlgorithm3(B=args.B, stages=stages)
+        exact_relu = ExactReluFromAlgorithm1(B=args.B, stages=stages)
         compile_time = time.perf_counter() - compile_start
         exact_acc = exact_relu_accuracy(exact_relu, x_test, y_test, args.B)
         exact_total_time = alg3_train_time + compile_time
